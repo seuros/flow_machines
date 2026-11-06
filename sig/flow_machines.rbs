@@ -1,0 +1,27 @@
+# Native policy decisions only. The caller owns queues and enforces the results.
+module FlowMachines
+  VERSION: String
+
+  type signal = :pause | :resume | :unchanged
+  type state = :running | :paused
+
+  # Aggregate accounting, not a semaphore or a per-work-item permit ledger.
+  class CreditWindow
+    def self.new: (capacity: Integer) -> instance
+    def try_acquire: (Integer units) -> bool
+    def release: (Integer units) -> bool
+    def capacity: () -> Integer
+    def in_flight: () -> Integer
+    def available: () -> Integer
+    def inspect: () -> String
+  end
+
+  # Starts running; pauses at occupancy >= high and resumes at occupancy <= low.
+  class Watermarks
+    def self.new: (low: Integer, high: Integer) -> instance
+    def observe: (Integer occupancy) -> signal
+    def state: () -> state
+    def paused?: () -> bool
+    def inspect: () -> String
+  end
+end

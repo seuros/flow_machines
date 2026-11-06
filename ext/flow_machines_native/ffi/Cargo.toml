@@ -1,0 +1,22 @@
+[package]
+name = "flow_machines_native"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Ruby bindings for flow-machines capacity and backpressure decisions"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[dependencies]
+flow-machines.workspace = true
+magnus.workspace = true
+# Supplies the stable Ruby API when generated bindings lag a Ruby release.
+rb-sys.workspace = true
+
+[lints]
+workspace = true

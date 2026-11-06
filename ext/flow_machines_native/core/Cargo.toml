@@ -1,0 +1,13 @@
+[package]
+name = "flow-machines"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Allocation-free capacity credits and hysteretic backpressure decisions"
+keywords = ["backpressure", "flow-control", "no-std"]
+categories = ["no-std", "algorithms"]
+readme = "README.md"
+
+[lints]
+workspace = true
