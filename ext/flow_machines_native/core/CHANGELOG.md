@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/seuros/flow_machines/compare/flow-machines-v0.2.0...flow-machines-v0.2.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* keep test sources out of the packaged gem and crate ([3c9e544](https://github.com/seuros/flow_machines/commit/3c9e544f3b2140a179455b34236fd0f2ab9747a7))
+
 ## [0.2.0](https://github.com/seuros/flow_machines/compare/flow-machines-v0.1.0...flow-machines-v0.2.0) (2026-11-06)
 
 
