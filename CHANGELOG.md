@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/seuros/flow_machines/compare/flow_machines/v0.1.3...flow_machines/v0.1.4) (2026-11-06)
+
+
+### Bug Fixes
+
+* crates.io keywords and categories for the core ([14830b5](https://github.com/seuros/flow_machines/commit/14830b52d44337c74302591f4c73ebcbe8bac3e4))
+
 ## [0.1.3](https://github.com/seuros/flow_machines/compare/flow_machines/v0.1.2...flow_machines/v0.1.3) (2026-11-06)
 
 
