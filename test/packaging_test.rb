@@ -8,15 +8,15 @@ require 'tmpdir'
 module FlowMachines
   class PackagingTest < Minitest::Test
     def test_native_state_survives_compaction_and_cannot_be_implicitly_copied
-      window = CreditWindow.new(capacity: 3)
-      control = Watermarks.new(low: 1, high: 3)
-      assert window.try_acquire(3)
+      window = CreditWindow.new(3)
+      control = Watermarks.new(1, 3)
+      assert_equal :acquired, window.try_acquire(3)
       assert_equal :pause, control.observe(3)
 
       GC.compact
 
       assert_equal 3, window.in_flight
-      assert control.paused?
+      assert_equal :paused, control.state
       [window, control].each do |object|
         assert_raises(TypeError) { object.dup }
         assert_raises(TypeError) { object.clone }

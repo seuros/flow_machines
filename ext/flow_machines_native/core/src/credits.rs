@@ -1,5 +1,7 @@
 use core::num::NonZeroU32;
 
+use crate::Refusal;
+
 /// Aggregate capacity accounting for caller-owned work.
 ///
 /// The caller must serialize this state with admission and return every acquired
@@ -20,26 +22,40 @@ impl CreditWindow {
         }
     }
 
-    /// Acquire all requested units, or return `false` without changing state.
-    #[must_use]
-    pub const fn try_acquire(&mut self, units: NonZeroU32) -> bool {
-        if units.get() > self.available() {
-            return false;
+    /// Acquire all requested units.
+    ///
+    /// # Errors
+    ///
+    /// [`Refusal::Insufficient`] when `units` exceeds [`Self::available`]:
+    /// there is no partial grant and nothing changes.
+    pub const fn try_acquire(&mut self, units: NonZeroU32) -> Result<(), Refusal> {
+        let available = self.available();
+        if units.get() > available {
+            return Err(Refusal::Insufficient { available });
         }
         self.in_flight += units.get();
-        true
+        Ok(())
     }
 
-    /// Return all requested units, or return `false` if that exceeds the balance.
+    /// Return all requested units.
     ///
-    /// A successful return does not prove that this particular work owned credits.
-    #[must_use]
-    pub const fn release(&mut self, units: NonZeroU32) -> bool {
+    /// The window counts units, not permits: an honoured release does not
+    /// prove that this particular work owned credits, so a repeated release
+    /// cannot be recognised as a repeat. It is honoured while units remain in
+    /// flight and refused once they do not.
+    ///
+    /// # Errors
+    ///
+    /// [`Refusal::ExceedsInFlight`] when `units` exceeds [`Self::in_flight`]:
+    /// there is no partial return and nothing changes.
+    pub const fn release(&mut self, units: NonZeroU32) -> Result<(), Refusal> {
         if units.get() > self.in_flight {
-            return false;
+            return Err(Refusal::ExceedsInFlight {
+                in_flight: self.in_flight,
+            });
         }
         self.in_flight -= units.get();
-        true
+        Ok(())
     }
 
     /// Maximum outstanding units.

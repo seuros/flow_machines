@@ -5,44 +5,44 @@ require 'test_helper'
 module FlowMachines
   class WatermarksTest < Minitest::Test
     def test_edges_and_hysteresis_include_both_thresholds
-      control = Watermarks.new(low: 2, high: 5)
+      control = Watermarks.new(2, 5)
 
       assert_equal :running, control.state
-      refute control.paused?
       assert_equal :unchanged, control.observe(4)
       assert_equal :pause, control.observe(5)
-      assert control.paused?
       assert_equal :paused, control.state
       assert_equal :unchanged, control.observe(5)
       assert_equal :unchanged, control.observe(3)
       assert_equal :resume, control.observe(2)
-      refute control.paused?
+      assert_equal :running, control.state
       assert_equal :unchanged, control.observe(0)
     end
 
     def test_zero_low_threshold_and_maximum_occupancy
-      control = Watermarks.new(low: 0, high: 1)
+      control = Watermarks.new(0, 1)
 
       assert_equal :pause, control.observe((2**32) - 1)
       assert_equal :unchanged, control.observe(1)
       assert_equal :resume, control.observe(0)
     end
 
-    def test_invalid_thresholds_and_keywords
-      [{ low: 2, high: 2 }, { low: 3, high: 2 }, { low: 0, high: 0 }].each do |bounds|
-        assert_raises(ArgumentError) { Watermarks.new(**bounds) }
+    def test_invalid_thresholds_and_positional_arguments
+      [[2, 2], [3, 2], [0, 0], [-1, 2], [0, 2**32]].each do |bounds|
+        assert_raises(RangeError) { Watermarks.new(*bounds) }
       end
-      assert_raises(ArgumentError) { Watermarks.new(low: 1) }
-      assert_raises(ArgumentError) { Watermarks.new(low: 1, high: 2, typo: 3) }
-      assert_raises(ArgumentError) { Watermarks.new(1, 2) }
-      assert_raises(TypeError) { Watermarks.new(low: 1.0, high: 2) }
-      assert_raises(TypeError) { Watermarks.new(low: 0, high: nil) }
-      assert_raises(RangeError) { Watermarks.new(low: -1, high: 2) }
-      assert_raises(RangeError) { Watermarks.new(low: 0, high: 2**32) }
+      assert_raises(ArgumentError) { Watermarks.new(1) }
+      assert_raises(ArgumentError) { Watermarks.new(1, 2, 3) }
+      assert_raises(ArgumentError) { Watermarks.new(low: 1, high: 2) }
+      assert_raises(TypeError) { Watermarks.new(1.0, 2) }
+      assert_raises(TypeError) { Watermarks.new(0, nil) }
+    end
+
+    def test_only_the_core_operations_are_exposed
+      assert_equal %i[observe state], Watermarks.public_instance_methods(false).sort
     end
 
     def test_invalid_observations_leave_state_unchanged
-      control = Watermarks.new(low: 1, high: 3)
+      control = Watermarks.new(1, 3)
 
       [nil, true, '3', 3.0, Float::INFINITY].each do |value|
         assert_raises(TypeError) { control.observe(value) }
@@ -55,16 +55,15 @@ module FlowMachines
     end
 
     def test_freeze_guards_the_native_state
-      control = Watermarks.new(low: 1, high: 3).freeze
+      control = Watermarks.new(1, 3).freeze
 
       assert_raises(FrozenError) { control.observe(3) }
       assert_equal :running, control.state
-      assert_match(/Watermarks state=running/, control.inspect)
     end
 
     def test_randomized_trace_matches_a_reference_state_machine
       random = Random.new(4210)
-      control = Watermarks.new(low: 2, high: 7)
+      control = Watermarks.new(2, 7)
       paused = false
 
       500.times do
@@ -72,7 +71,6 @@ module FlowMachines
         next_paused = paused ? occupancy > 2 : occupancy >= 7
         signal = next_paused == paused ? :unchanged : (next_paused ? :pause : :resume)
         assert_equal signal, control.observe(occupancy)
-        assert_equal next_paused, control.paused?
         assert_equal(next_paused ? :paused : :running, control.state)
         paused = next_paused
       end

@@ -2,7 +2,6 @@ use core::num::NonZeroU32;
 
 /// Whether a producer should currently run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum FlowState {
     /// The producer may attempt admission.
     Running,
@@ -12,7 +11,6 @@ pub enum FlowState {
 
 /// A state transition to propagate to a producer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
 pub enum Signal {
     /// Stop producing until resumed.
     Pause,
@@ -45,18 +43,28 @@ impl Watermarks {
     }
 
     /// Observe occupancy and emit a pause/resume edge when a threshold is crossed.
+    ///
+    /// Never refuses: every `u32` is a valid reading and every answer is
+    /// honoured. [`Signal::Unchanged`] changed nothing.
     #[must_use]
     pub const fn observe(&mut self, occupancy: u32) -> Signal {
         match self.state {
-            FlowState::Running if occupancy >= self.high.get() => {
-                self.state = FlowState::Paused;
-                Signal::Pause
+            FlowState::Running => {
+                if occupancy >= self.high.get() {
+                    self.state = FlowState::Paused;
+                    Signal::Pause
+                } else {
+                    Signal::Unchanged
+                }
             }
-            FlowState::Paused if occupancy <= self.low => {
-                self.state = FlowState::Running;
-                Signal::Resume
+            FlowState::Paused => {
+                if occupancy <= self.low {
+                    self.state = FlowState::Running;
+                    Signal::Resume
+                } else {
+                    Signal::Unchanged
+                }
             }
-            _ => Signal::Unchanged,
         }
     }
 

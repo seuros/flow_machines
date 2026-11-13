@@ -1,4 +1,10 @@
 # Native policy decisions only. The caller owns queues and enforces the results.
+#
+# Counts are Integers in 0..2**32-1: TypeError for anything else, RangeError
+# outside the range, and RangeError for zero where the core takes a NonZeroU32
+# (capacity, units, high). A frozen object raises FrozenError on try_acquire,
+# release and observe. Refusals are symbols, one per core `Refusal` variant,
+# and a refused call changes nothing.
 module FlowMachines
   VERSION: String
 
@@ -7,21 +13,26 @@ module FlowMachines
 
   # Aggregate accounting, not a semaphore or a per-work-item permit ledger.
   class CreditWindow
-    def self.new: (capacity: Integer) -> instance
-    def try_acquire: (Integer units) -> bool
-    def release: (Integer units) -> bool
+    # Positional, like the core. Never refuses.
+    def self.new: (Integer capacity) -> instance
+    # Honoured: :acquired, all `units` are now in flight.
+    # Refused: :insufficient, `units` is more than `available`.
+    def try_acquire: (Integer units) -> (:acquired | :insufficient)
+    # Honoured: :released, all `units` are available again.
+    # Refused: :exceeds_in_flight, `units` is more than `in_flight`.
+    # The window cannot recognise a repeated release: see the README.
+    def release: (Integer units) -> (:released | :exceeds_in_flight)
     def capacity: () -> Integer
     def in_flight: () -> Integer
     def available: () -> Integer
-    def inspect: () -> String
   end
 
   # Starts running; pauses at occupancy >= high and resumes at occupancy <= low.
   class Watermarks
-    def self.new: (low: Integer, high: Integer) -> instance
+    # Positional, like the core. RangeError unless low < high.
+    def self.new: (Integer low, Integer high) -> instance
+    # Never refuses. :pause and :resume are edges; :unchanged changed nothing.
     def observe: (Integer occupancy) -> signal
     def state: () -> state
-    def paused?: () -> bool
-    def inspect: () -> String
   end
 end

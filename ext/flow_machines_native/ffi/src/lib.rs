@@ -6,6 +6,7 @@ mod watermarks;
 
 use std::num::NonZeroU32;
 
+use flow_machines::Refusal;
 use magnus::{Error, Integer, Ruby, TryConvert, Value};
 
 /// Counts must be Ruby Integers: Magnus otherwise permits truncating Floats.
@@ -25,7 +26,16 @@ impl TryConvert for Count {
     }
 }
 
+/// The core's `NonZeroU32`: zero is out of range, like a negative count.
 pub(crate) fn positive(ruby: &Ruby, count: Count) -> Result<NonZeroU32, Error> {
     NonZeroU32::new(count.0)
-        .ok_or_else(|| Error::new(ruby.exception_arg_error(), "count must be positive"))
+        .ok_or_else(|| Error::new(ruby.exception_range_error(), "count must be positive"))
+}
+
+/// One symbol per core variant, the snake case of its name.
+pub(crate) const fn refusal(refusal: Refusal) -> &'static str {
+    match refusal {
+        Refusal::Insufficient { .. } => "insufficient",
+        Refusal::ExceedsInFlight { .. } => "exceeds_in_flight",
+    }
 }

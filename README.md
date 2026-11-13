@@ -11,12 +11,12 @@ gem 'flow_machines'
 ```
 
 ```ruby
-window  = FlowMachines::CreditWindow.new(capacity: 100)
-control = FlowMachines::Watermarks.new(low: 20, high: 80)
+window  = FlowMachines::CreditWindow.new(100)
+control = FlowMachines::Watermarks.new(20, 80)
 
 # Producer side: ask before you enqueue.
 def enqueue(job)
-  return false unless window.try_acquire(1)
+  return false unless window.try_acquire(1) == :acquired
   queue << job
   producer.pause if control.observe(queue.length) == :pause
   true
@@ -85,32 +85,32 @@ sequenceDiagram
     participant C as Consumer
 
     P->>W: try_acquire(1)
-    W-->>P: true (1 in flight)
+    W-->>P: acquired (1 in flight)
     P->>M: observe(1)
     M-->>P: unchanged
 
     P->>W: try_acquire(1)
-    W-->>P: true (2 in flight)
+    W-->>P: acquired (2 in flight)
     P->>M: observe(2)
     M-->>P: unchanged
 
     P->>W: try_acquire(1)
-    W-->>P: true (3 in flight)
+    W-->>P: acquired (3 in flight)
     P->>M: observe(3)
     M-->>P: pause
     Note over P: stops producing
 
     P->>W: try_acquire(1)
-    W-->>P: false (window full)
+    W-->>P: insufficient (window full)
 
     C->>W: release(1)
-    W-->>C: true (2 in flight)
+    W-->>C: released (2 in flight)
     C->>M: observe(2)
     M-->>C: unchanged
     Note over P: still paused, no flapping
 
     C->>W: release(1)
-    W-->>C: true (1 in flight)
+    W-->>C: released (1 in flight)
     C->>M: observe(1)
     M-->>C: resume
     Note over P: starts producing again
@@ -121,41 +121,41 @@ sequenceDiagram
 A window has a capacity. Acquiring takes units out of it, releasing puts them back. Both are all-or-nothing.
 
 ```ruby
-window = FlowMachines::CreditWindow.new(capacity: 3)
+window = FlowMachines::CreditWindow.new(3)
 window.capacity    # => 3
 window.in_flight   # => 0
 window.available   # => 3
 
-window.try_acquire(2)   # => true
-window.try_acquire(2)   # => false, only 1 left and we asked for 2
+window.try_acquire(2)   # => :acquired
+window.try_acquire(2)   # => :insufficient, only 1 left and we asked for 2
 window.in_flight        # => 2
 window.available        # => 1
 ```
 
-A refused acquire takes nothing. There is no partial grant, so you never have to figure out how much you actually got.
+A refused acquire takes nothing. There is no partial grant, so you never have to figure out how much you actually got. Both answers are symbols, and both are truthy: compare against `:acquired`, don't write `if window.try_acquire(1)`.
 
 Release is the same deal in reverse:
 
 ```ruby
-window.release(3)   # => false, only 2 are out
-window.release(2)   # => true
-window.release(1)   # => false, nothing is out
+window.release(3)   # => :exceeds_in_flight, only 2 are out
+window.release(2)   # => :released
+window.release(1)   # => :exceeds_in_flight, nothing is out
 window.available    # => 3
 ```
 
-The window is a count, not a ledger. It doesn't know who acquired what. If your code acquires on enqueue and forgets to release on a cancelled job, the window will slowly fill with ghosts. Release every unit you acquire exactly once, including on the error path.
+The window is a count, not a ledger. It doesn't know who acquired what, so it cannot tell a repeated release from a legitimate one: release the same job twice and the second call answers `:released` too, as long as anything is still out, and quietly hands back somebody else's credit. Only when nothing is left does it answer `:exceeds_in_flight`. If your code acquires on enqueue and forgets to release on a cancelled job, the window will slowly fill with ghosts. Release every unit you acquire exactly once, including on the error path.
 
 ## The Watermarks
 
 A watermarks controller starts running. Feed it the current occupancy after every change and it answers with one of three words.
 
 ```ruby
-control = FlowMachines::Watermarks.new(low: 2, high: 5)
+control = FlowMachines::Watermarks.new(2, 5)
 control.state        # => :running
 
 control.observe(4)   # => :unchanged
 control.observe(5)   # => :pause
-control.paused?      # => true
+control.state        # => :paused
 control.observe(5)   # => :unchanged, already paused
 control.observe(3)   # => :unchanged, above low, stay paused
 control.observe(2)   # => :resume
@@ -164,7 +164,7 @@ control.observe(0)   # => :unchanged
 
 The gap between `low` and `high` is the whole point. A controller that paused at 5 and resumed at 4 would flap every time one job finished. This one pauses at 5 and won't resume until the queue drains to 2. That's hysteresis, and it's why your producer doesn't get whiplash.
 
-`:pause` and `:resume` are edges. You get each one once per crossing. If a producer connects late and missed the edge, ask `state` or `paused?` instead of waiting for a signal that already went by.
+`:pause` and `:resume` are edges. You get each one once per crossing. If a producer connects late and missed the edge, ask `state` instead of waiting for a signal that already went by.
 
 Occupancy is whatever you want to measure. Queue length is the obvious choice. Bytes buffered, open connections, or outstanding requests all work just as well, as long as you measure the same thing every time.
 
@@ -173,8 +173,8 @@ Occupancy is whatever you want to measure. Queue length is the obvious choice. B
 The window and the controller don't know about each other. You wire them around your queue. Here's a cancellation path, the one everyone forgets:
 
 ```ruby
-window  = FlowMachines::CreditWindow.new(capacity: 4)
-control = FlowMachines::Watermarks.new(low: 1, high: 3)
+window  = FlowMachines::CreditWindow.new(4)
+control = FlowMachines::Watermarks.new(1, 3)
 queue   = []
 
 3.times do |id|
@@ -182,28 +182,44 @@ queue   = []
   queue << id
   control.observe(queue.length)   # :unchanged, :unchanged, :pause
 end
-control.paused?                   # => true
+control.state                     # => :paused
 
 # A job is cancelled before it ever ran. Still a release.
 queue.pop
-window.release(1)                 # => true
+window.release(1)                 # => :released
 control.observe(queue.length)     # => :unchanged, 2 is above low
 
 # One finishes normally.
 queue.shift
-window.release(1)                 # => true
+window.release(1)                 # => :released
 control.observe(queue.length)     # => :resume
 window.in_flight                  # => 1, same as queue.length
 ```
 
 If the cancelled job hadn't released its credit, `in_flight` would read 2 while the queue held 1, and the window would be one berth short forever.
 
+### Every answer
+
+A call that is honoured answers with a value. A call that is not honoured answers with one of the refusal symbols below, and only those, and changes nothing. Each refusal is the snake_case of one core `Refusal` variant; there is no catch-all symbol, and a refusal never raises.
+
+| Call | Honoured | Refusals |
+| --- | --- | --- |
+| `CreditWindow#try_acquire(units)` | `:acquired` | `:insufficient` (`units` is more than `available`) |
+| `CreditWindow#release(units)` | `:released` | `:exceeds_in_flight` (`units` is more than `in_flight`) |
+| `Watermarks#observe(occupancy)` | `:pause`, `:resume`, `:unchanged` | none |
+
+`CreditWindow.new(capacity)`, `capacity`, `in_flight`, `available` and `Watermarks#state` (`:running` or `:paused`) never refuse. `Watermarks.new(low, high)` answers a controller or raises `RangeError` unless `low < high`.
+
 ## The Rules of the Escort
 
-- **Counts are Integers** in `0..4_294_967_295`. Capacity, acquire, and release units must be at least 1. Floats and strings raise `TypeError`, zero raises `ArgumentError`, negatives and anything past the range raise `RangeError`.
-- **Thresholds obey `0 <= low < high`.** Equal thresholds or a reversed pair raise `ArgumentError`. A `low` of zero is fine: resume only when fully drained.
-- **Keywords only.** `CreditWindow.new(3)` and `Watermarks.new(1, 2)` raise `ArgumentError`. So does an unknown keyword.
-- **A rejected observation changes nothing.** Pass the controller a float and it raises, but its state is exactly what it was before.
+- **Counts are Integers** in `0..4_294_967_295`. Capacity, acquire and release units, and `high` must be at least 1. Floats and strings raise `TypeError`; zero where 1 is the minimum, negatives and anything past the range raise `RangeError`.
+- **Thresholds obey `0 <= low < high`.** Equal thresholds or a reversed pair raise `RangeError`. A `low` of zero is fine: resume only when fully drained.
+- **Positional, like the core.** `CreditWindow.new(capacity)` and `Watermarks.new(low, high)`, in that order. There are no keywords and no defaults.
+- **A refusal is a symbol, and nothing changed.** `:insufficient` and `:exceeds_in_flight` leave `in_flight` and `available` exactly as they were. Nothing is granted or returned in part.
+- **No repeat is recognised.** Credits are an aggregate count with no owner, so the window cannot prove that a release, or an acquire, is a replay of an earlier one. Every call is counted. Releasing each unit exactly once is yours to get right.
+- **`:unchanged` is an answer, not a refusal.** `observe` accepts every reading. `:pause` and `:resume` moved the state; `:unchanged` left it alone.
+- **No clock, no handles.** Neither object reads time or issues ids, so there is nothing to scope and nothing to resume after a restart: rebuild the window and re-acquire what is still in flight.
+- **Malformed input changes nothing.** Pass the controller a float and it raises, but its state is exactly what it was before.
 - **No copies.** `dup` and `clone` raise `TypeError`. Live accounting isn't something you want two of.
 - **Frozen means frozen.** `freeze` either object and every mutation raises `FrozenError`.
 
