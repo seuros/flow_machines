@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/seuros/flow_machines/compare/flow_machines/v0.2.1...flow_machines/v0.3.0) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* adopt matryona-machines 0.2 (shared converters, frozen-first)
+
+### Features
+
+* adopt matryona-machines 0.2 (shared converters, frozen-first) ([63ccf35](https://github.com/seuros/flow_machines/commit/63ccf3565543bdf6634015c188ceb6eda1e09af0))
+
 ## [0.2.1](https://github.com/seuros/flow_machines/compare/flow_machines/v0.2.0...flow_machines/v0.2.1) (2026-11-14)
 
 
