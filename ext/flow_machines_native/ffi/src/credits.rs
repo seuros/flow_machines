@@ -1,35 +1,43 @@
 //! `FlowMachines::CreditWindow`: aggregate counts, not individually owned permits.
 
 use std::cell::RefCell;
+use std::num::NonZeroU32;
 
-use flow_machines::CreditWindow;
+use flow_machines::{CreditWindow, Refusal};
 use magnus::typed_data::Obj;
-use magnus::{Error, RModule, Ruby, Symbol, function, method, prelude::*};
+use magnus::{Error, RModule, Ruby, Symbol, Value, function, method, prelude::*};
 
-use crate::{Count, positive, refusal};
+use crate::{positive, refusal};
 
 #[magnus::wrap(class = "FlowMachines::CreditWindow", free_immediately, size)]
 struct Wrapper(RefCell<CreditWindow>);
 
 impl Wrapper {
-    fn new(ruby: &Ruby, capacity: Count) -> Result<Self, Error> {
-        Ok(Self(RefCell::new(CreditWindow::new(positive(
-            ruby, capacity,
-        )?))))
+    fn new(ruby: &Ruby, capacity: Value) -> Result<Self, Error> {
+        let capacity = positive(ruby, capacity, "capacity")?;
+        Ok(Self(RefCell::new(CreditWindow::new(capacity))))
     }
 
-    fn try_acquire(ruby: &Ruby, rb_self: Obj<Self>, units: Count) -> Result<Symbol, Error> {
-        rb_self.check_frozen()?;
-        let units = positive(ruby, units)?;
-        let outcome = rb_self.0.borrow_mut().try_acquire(units);
-        Ok(ruby.to_symbol(outcome.map_or_else(refusal, |()| "acquired")))
+    fn try_acquire(ruby: &Ruby, rb_self: Obj<Self>, units: Value) -> Result<Symbol, Error> {
+        Self::apply(ruby, rb_self, units, CreditWindow::try_acquire, "acquired")
     }
 
-    fn release(ruby: &Ruby, rb_self: Obj<Self>, units: Count) -> Result<Symbol, Error> {
+    fn release(ruby: &Ruby, rb_self: Obj<Self>, units: Value) -> Result<Symbol, Error> {
+        Self::apply(ruby, rb_self, units, CreditWindow::release, "released")
+    }
+
+    /// Check and convert everything that can raise, then call the core once.
+    fn apply(
+        ruby: &Ruby,
+        rb_self: Obj<Self>,
+        units: Value,
+        operation: fn(&mut CreditWindow, NonZeroU32) -> Result<(), Refusal>,
+        honoured: &'static str,
+    ) -> Result<Symbol, Error> {
         rb_self.check_frozen()?;
-        let units = positive(ruby, units)?;
-        let outcome = rb_self.0.borrow_mut().release(units);
-        Ok(ruby.to_symbol(outcome.map_or_else(refusal, |()| "released")))
+        let units = positive(ruby, units, "units")?;
+        let outcome = operation(&mut rb_self.0.borrow_mut(), units);
+        Ok(ruby.to_symbol(outcome.map_or_else(refusal, |()| honoured)))
     }
 
     fn capacity(&self) -> u32 {
@@ -48,6 +56,7 @@ impl Wrapper {
 /// Register the credit-window class under the gem namespace.
 pub fn define(ruby: &Ruby, module: RModule) -> Result<(), Error> {
     let class = module.define_class("CreditWindow", ruby.class_object())?;
+    class.undef_default_alloc_func();
     class.define_singleton_method("new", function!(Wrapper::new, 1))?;
     class.define_method("try_acquire", method!(Wrapper::try_acquire, 1))?;
     class.define_method("release", method!(Wrapper::release, 1))?;

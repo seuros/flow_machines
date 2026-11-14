@@ -4,23 +4,25 @@ use std::cell::RefCell;
 
 use flow_machines::{FlowState, Signal, Watermarks};
 use magnus::typed_data::Obj;
-use magnus::{Error, RModule, Ruby, Symbol, function, method, prelude::*};
+use magnus::{Error, RModule, Ruby, Symbol, Value, function, method, prelude::*};
 
-use crate::{Count, positive};
+use crate::{count, positive};
 
 #[magnus::wrap(class = "FlowMachines::Watermarks", free_immediately, size)]
 struct Wrapper(RefCell<Watermarks>);
 
 impl Wrapper {
-    fn new(ruby: &Ruby, low: Count, high: Count) -> Result<Self, Error> {
-        let control = Watermarks::new(low.0, positive(ruby, high)?)
+    fn new(ruby: &Ruby, low: Value, high: Value) -> Result<Self, Error> {
+        let low = count(ruby, low, "low")?;
+        let control = Watermarks::new(low, positive(ruby, high, "high")?)
             .ok_or_else(|| Error::new(ruby.exception_range_error(), "low must be below high"))?;
         Ok(Self(RefCell::new(control)))
     }
 
-    fn observe(ruby: &Ruby, rb_self: Obj<Self>, occupancy: Count) -> Result<Symbol, Error> {
+    fn observe(ruby: &Ruby, rb_self: Obj<Self>, occupancy: Value) -> Result<Symbol, Error> {
         rb_self.check_frozen()?;
-        let signal = rb_self.0.borrow_mut().observe(occupancy.0);
+        let occupancy = count(ruby, occupancy, "occupancy")?;
+        let signal = rb_self.0.borrow_mut().observe(occupancy);
         // Finish the mutable borrow before allocating a Ruby value.
         Ok(ruby.to_symbol(match signal {
             Signal::Pause => "pause",
@@ -41,6 +43,7 @@ impl Wrapper {
 /// Register the watermark controller under the gem namespace.
 pub fn define(ruby: &Ruby, module: RModule) -> Result<(), Error> {
     let class = module.define_class("Watermarks", ruby.class_object())?;
+    class.undef_default_alloc_func();
     class.define_singleton_method("new", function!(Wrapper::new, 2))?;
     class.define_method("observe", method!(Wrapper::observe, 1))?;
     class.define_method("state", method!(Wrapper::state, 0))

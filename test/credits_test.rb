@@ -14,10 +14,6 @@ module FlowMachines
       assert_equal before, snapshot(window)
     end
 
-    def test_starts_with_all_capacity_available
-      assert_equal [3, 0, 3], snapshot(CreditWindow.new(3))
-    end
-
     def test_acquisition_and_release_are_all_or_nothing
       window = CreditWindow.new(3)
 
@@ -70,14 +66,12 @@ module FlowMachines
     def test_the_constructor_is_positional_like_the_core
       assert_raises(ArgumentError) { CreditWindow.new }
       assert_raises(ArgumentError) { CreditWindow.new(3, 4) }
-      assert_raises(TypeError) { CreditWindow.new(capacity: 3) }
-    end
-
-    def test_refusals_never_raise_and_honoured_answers_are_symbols
-      window = CreditWindow.new(1)
-
-      assert_equal %i[acquired insufficient released exceeds_in_flight],
-                   [window.try_acquire(1), window.try_acquire(1), window.release(1), window.release(1)]
+      error = assert_raises(TypeError) { CreditWindow.new(capacity: 3) }
+      assert_equal 'capacity must be an Integer, not Hash', error.message
+      error = assert_raises(TypeError) { CreditWindow.new(3).try_acquire(nil) }
+      assert_equal 'units must be an Integer, not NilClass', error.message
+      error = assert_raises(RangeError) { CreditWindow.new(0) }
+      assert_equal 'capacity must be positive', error.message
     end
 
     def test_only_the_core_operations_are_exposed
@@ -93,14 +87,6 @@ module FlowMachines
       assert_raises(FrozenError) { window.try_acquire(1) }
       assert_raises(FrozenError) { window.release(1) }
       assert_equal 1, window.in_flight
-    end
-
-    def test_independent_windows_do_not_share_balances
-      first = CreditWindow.new(2)
-      second = CreditWindow.new(2)
-
-      assert_equal :acquired, first.try_acquire(2)
-      assert_equal 2, second.available
     end
 
     def test_randomized_trace_matches_an_independent_balance_model

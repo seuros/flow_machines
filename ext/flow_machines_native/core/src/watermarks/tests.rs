@@ -1,64 +1,70 @@
-#![allow(clippy::expect_used)] // Failed test assumptions should panic.
-
 use super::*;
+use crate::test_support::{Rng, nonzero};
 
-fn high(value: u32) -> NonZeroU32 {
-    NonZeroU32::new(value).expect("test high watermark is positive")
+fn control(low: u32, high: u32) -> Watermarks {
+    let Some(control) = Watermarks::new(low, nonzero(high)) else {
+        panic!("{low} < {high} are valid thresholds");
+    };
+    control
 }
 
 #[test]
 fn rejects_equal_or_inverted_thresholds() {
-    assert_eq!(Watermarks::new(5, high(5)), None);
-    assert_eq!(Watermarks::new(6, high(5)), None);
-    assert!(Watermarks::new(0, high(1)).is_some());
+    assert_eq!(Watermarks::new(5, nonzero(5)), None);
+    assert_eq!(Watermarks::new(6, nonzero(5)), None);
 }
+
+/// Thresholds, the readings with the signal each must emit, and the final state.
+type Trace = (u32, u32, &'static [(u32, Signal)], FlowState);
 
 #[test]
 fn crossing_thresholds_emits_edges_only() {
-    let mut control = Watermarks::new(2, high(5)).expect("valid thresholds");
-    let readings = [0, 4, 5, 9, 4, 3, 2, 1, 5];
-    let signals = readings.map(|occupancy| control.observe(occupancy));
-    assert_eq!(
-        signals,
-        [
-            Signal::Unchanged,
-            Signal::Unchanged,
-            Signal::Pause,
-            Signal::Unchanged,
-            Signal::Unchanged,
-            Signal::Unchanged,
-            Signal::Resume,
-            Signal::Unchanged,
-            Signal::Pause,
-        ],
-    );
-    assert_eq!(control.state(), FlowState::Paused);
-}
-
-#[test]
-fn extremes_and_zero_low_watermark_work() {
-    let mut control = Watermarks::new(0, high(u32::MAX)).expect("valid thresholds");
-    assert_eq!(control.observe(u32::MAX), Signal::Pause);
-    assert_eq!(control.observe(1), Signal::Unchanged);
-    assert_eq!(control.observe(0), Signal::Resume);
-    assert_eq!(control.state(), FlowState::Running);
-}
-
-/// xorshift64: a fixed seed keeps the trace reproducible.
-fn next(state: &mut u64) -> u32 {
-    *state ^= *state << 13;
-    *state ^= *state >> 7;
-    *state ^= *state << 17;
-    u32::try_from(*state >> 40).expect("24 bits fit")
+    use Signal::{Pause, Resume, Unchanged};
+    let cases: [Trace; 2] = [
+        (
+            2,
+            5,
+            &[
+                (0, Unchanged),
+                (4, Unchanged),
+                (5, Pause),
+                (9, Unchanged),
+                (4, Unchanged),
+                (3, Unchanged),
+                (2, Resume),
+                (1, Unchanged),
+                (5, Pause),
+            ],
+            FlowState::Paused,
+        ),
+        // Extremes: a zero low watermark and the largest high one.
+        (
+            0,
+            u32::MAX,
+            &[(u32::MAX, Pause), (1, Unchanged), (0, Resume)],
+            FlowState::Running,
+        ),
+    ];
+    for (low, high, readings, state) in cases {
+        let mut control = control(low, high);
+        for &(occupancy, signal) in readings {
+            assert_eq!(
+                control.observe(occupancy),
+                signal,
+                "{low}..{high} at {occupancy}"
+            );
+        }
+        assert_eq!(control.state(), state);
+    }
 }
 
 #[test]
 fn randomized_trace_matches_a_reference_state_machine() {
-    let mut seed = 0x4210_4210_4210_4210;
-    let mut control = Watermarks::new(2, high(7)).expect("valid thresholds");
+    let mut rng = Rng(0x4210_4210_4210_4210);
+    let mut control = control(2, 7);
     let mut paused = false;
     for _ in 0..20_000 {
-        let occupancy = next(&mut seed) % 11;
+        let occupancy = rng.below(11);
         let before = control.clone();
         let next_paused = if paused {
             occupancy > 2

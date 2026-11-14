@@ -2,9 +2,9 @@
 #
 # Counts are Integers in 0..2**32-1: TypeError for anything else, RangeError
 # outside the range, and RangeError for zero where the core takes a NonZeroU32
-# (capacity, units, high). A frozen object raises FrozenError on try_acquire,
-# release and observe. Refusals are symbols, one per core `Refusal` variant,
-# and a refused call changes nothing.
+# (capacity, units, high). Both messages name the argument. A frozen object
+# raises FrozenError on try_acquire, release and observe. Refusals are
+# symbols, one per core `Refusal` variant, and a refused call changes nothing.
 module FlowMachines
   VERSION: String
 

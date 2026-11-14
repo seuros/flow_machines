@@ -34,7 +34,12 @@ module FlowMachines
       assert_raises(ArgumentError) { Watermarks.new(1, 2, 3) }
       assert_raises(ArgumentError) { Watermarks.new(low: 1, high: 2) }
       assert_raises(TypeError) { Watermarks.new(1.0, 2) }
-      assert_raises(TypeError) { Watermarks.new(0, nil) }
+      error = assert_raises(TypeError) { Watermarks.new(0, nil) }
+      assert_equal 'high must be an Integer, not NilClass', error.message
+      error = assert_raises(TypeError) { Watermarks.new({ low: 1 }, 2) }
+      assert_equal 'low must be an Integer, not Hash', error.message
+      error = assert_raises(RangeError) { Watermarks.new(-1, 2) }
+      assert_equal 'low must be in 0..=4294967295', error.message
     end
 
     def test_only_the_core_operations_are_exposed
@@ -59,6 +64,11 @@ module FlowMachines
 
       assert_raises(FrozenError) { control.observe(3) }
       assert_equal :running, control.state
+    end
+
+    def test_no_instance_exists_without_the_core
+      assert_raises(TypeError) { Watermarks.allocate }
+      assert_raises(TypeError) { FlowMachines::CreditWindow.allocate }
     end
 
     def test_randomized_trace_matches_a_reference_state_machine

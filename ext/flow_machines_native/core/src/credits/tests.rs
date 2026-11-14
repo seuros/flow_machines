@@ -1,103 +1,82 @@
-#![allow(clippy::expect_used)] // Failed test assumptions should panic.
-
 use super::*;
+use crate::test_support::{Rng, nonzero};
 
-fn units(value: u32) -> NonZeroU32 {
-    NonZeroU32::new(value).expect("test units are positive")
+/// One call in a scripted trace, and the answer the window must give.
+#[derive(Clone, Copy)]
+enum Step {
+    Acquire(u32, Result<(), Refusal>),
+    Release(u32, Result<(), Refusal>),
 }
 
-/// The call must be refused with `refusal` and leave the whole window as it was.
-fn refused(
-    window: &CreditWindow,
-    outcome: Result<(), Refusal>,
-    before: &CreditWindow,
-    refusal: Refusal,
-) {
-    assert_eq!(outcome, Err(refusal));
-    assert_eq!(window, before);
-}
-
-#[test]
-fn capacity_is_an_all_or_nothing_boundary() {
-    let mut window = CreditWindow::new(units(5));
-    assert_eq!(window.capacity(), 5);
-    assert_eq!(window.try_acquire(units(3)), Ok(()));
-    let before = window.clone();
-    let outcome = window.try_acquire(units(3));
-    refused(
-        &window,
-        outcome,
-        &before,
-        Refusal::Insufficient { available: 2 },
-    );
-    assert_eq!(window.try_acquire(units(2)), Ok(()));
-    assert_eq!(window.available(), 0);
-    let before = window.clone();
-    let outcome = window.try_acquire(units(1));
-    refused(
-        &window,
-        outcome,
-        &before,
-        Refusal::Insufficient { available: 0 },
-    );
-    assert_eq!(window.release(units(5)), Ok(()));
-    assert_eq!(window.in_flight(), 0);
+/// Run `steps` against a fresh window; every refusal must leave it as it was.
+fn replay(capacity: u32, steps: &[Step]) -> CreditWindow {
+    let mut window = CreditWindow::new(nonzero(capacity));
+    for (index, &step) in steps.iter().enumerate() {
+        let before = window.clone();
+        let (outcome, expected) = match step {
+            Step::Acquire(units, expected) => (window.try_acquire(nonzero(units)), expected),
+            Step::Release(units, expected) => (window.release(nonzero(units)), expected),
+        };
+        assert_eq!(outcome, expected, "step {index} of capacity {capacity}");
+        if outcome.is_err() {
+            assert_eq!(window, before, "refused step {index} changed the window");
+        }
+    }
+    window
 }
 
 #[test]
-fn over_release_does_not_create_credits() {
-    let mut window = CreditWindow::new(units(5));
-    let before = window.clone();
-    let outcome = window.release(units(1));
-    refused(
-        &window,
-        outcome,
-        &before,
-        Refusal::ExceedsInFlight { in_flight: 0 },
-    );
-    assert_eq!(window.try_acquire(units(2)), Ok(()));
-    let before = window.clone();
-    let outcome = window.release(units(3));
-    refused(
-        &window,
-        outcome,
-        &before,
-        Refusal::ExceedsInFlight { in_flight: 2 },
-    );
-}
-
-#[test]
-fn a_repeated_release_is_not_recognised_as_a_repeat() {
-    // Aggregate credits carry no owner, so the window cannot prove a repeat:
-    // it is honoured while units remain in flight and refused once they do not.
-    let mut window = CreditWindow::new(units(4));
-    assert_eq!(window.try_acquire(units(2)), Ok(()));
-    assert_eq!(window.release(units(1)), Ok(()));
-    assert_eq!(window.release(units(1)), Ok(()));
-    let before = window.clone();
-    let outcome = window.release(units(1));
-    refused(
-        &window,
-        outcome,
-        &before,
-        Refusal::ExceedsInFlight { in_flight: 0 },
-    );
-}
-
-#[test]
-fn maximum_capacity_does_not_overflow() {
-    let mut window = CreditWindow::new(units(u32::MAX));
-    assert_eq!(window.try_acquire(units(u32::MAX)), Ok(()));
-    let before = window.clone();
-    let outcome = window.try_acquire(units(1));
-    refused(
-        &window,
-        outcome,
-        &before,
-        Refusal::Insufficient { available: 0 },
-    );
-    assert_eq!(window.release(units(u32::MAX)), Ok(()));
-    assert_eq!(window.available(), u32::MAX);
+fn scripted_traces_are_all_or_nothing() {
+    use Step::{Acquire, Release};
+    const fn short(available: u32) -> Result<(), Refusal> {
+        Err(Refusal::Insufficient { available })
+    }
+    const fn over(in_flight: u32) -> Result<(), Refusal> {
+        Err(Refusal::ExceedsInFlight { in_flight })
+    }
+    let cases: [(u32, &[Step], u32); 4] = [
+        // Capacity is a boundary with no partial grant.
+        (
+            5,
+            &[
+                Acquire(3, Ok(())),
+                Acquire(3, short(2)),
+                Acquire(2, Ok(())),
+                Acquire(1, short(0)),
+            ],
+            5,
+        ),
+        // Over-release creates no credits.
+        (
+            5,
+            &[Release(1, over(0)), Acquire(2, Ok(())), Release(3, over(2))],
+            2,
+        ),
+        // Aggregate credits carry no owner, so a repeated release cannot be
+        // recognised: it is honoured while units remain in flight.
+        (
+            4,
+            &[
+                Acquire(2, Ok(())),
+                Release(1, Ok(())),
+                Release(1, Ok(())),
+                Release(1, over(0)),
+            ],
+            0,
+        ),
+        // The full u32 range does not overflow.
+        (
+            u32::MAX,
+            &[Acquire(u32::MAX, Ok(())), Acquire(1, short(0))],
+            u32::MAX,
+        ),
+    ];
+    for (capacity, steps, in_flight) in cases {
+        let window = replay(capacity, steps);
+        assert_eq!(window.capacity(), capacity);
+        assert_eq!(window.in_flight(), in_flight);
+        assert_eq!(window.available(), capacity - in_flight);
+    }
 }
 
 #[test]
@@ -115,25 +94,17 @@ fn refusals_describe_themselves() {
     );
 }
 
-/// xorshift64: a fixed seed keeps the trace reproducible.
-fn next(state: &mut u64) -> u32 {
-    *state ^= *state << 13;
-    *state ^= *state >> 7;
-    *state ^= *state << 17;
-    u32::try_from(*state >> 40).expect("24 bits fit")
-}
-
 #[test]
 fn randomized_trace_matches_a_balance_model() {
     const CAPACITY: u32 = 17;
-    let mut seed = 0x4209_4209_4209_4209;
-    let mut window = CreditWindow::new(units(CAPACITY));
+    let mut rng = Rng(0x4209_4209_4209_4209);
+    let mut window = CreditWindow::new(nonzero(CAPACITY));
     let mut outstanding = 0;
     let (mut honoured, mut refusals) = (0, 0);
     for _ in 0..20_000 {
-        let amount = 1 + next(&mut seed) % 23;
+        let amount = 1 + rng.below(23);
         let before = window.clone();
-        let (outcome, expected) = if next(&mut seed).is_multiple_of(2) {
+        let (outcome, expected) = if rng.below(2) == 0 {
             let available = CAPACITY - outstanding;
             let expected = if amount <= available {
                 outstanding += amount;
@@ -141,7 +112,7 @@ fn randomized_trace_matches_a_balance_model() {
             } else {
                 Err(Refusal::Insufficient { available })
             };
-            (window.try_acquire(units(amount)), expected)
+            (window.try_acquire(nonzero(amount)), expected)
         } else {
             let expected = if amount <= outstanding {
                 outstanding -= amount;
@@ -151,7 +122,7 @@ fn randomized_trace_matches_a_balance_model() {
                     in_flight: outstanding,
                 })
             };
-            (window.release(units(amount)), expected)
+            (window.release(nonzero(amount)), expected)
         };
         assert_eq!(outcome, expected);
         if outcome.is_err() {

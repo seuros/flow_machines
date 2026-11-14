@@ -3,6 +3,8 @@
 
 mod credits;
 mod refusal;
+#[cfg(test)]
+mod test_support;
 mod watermarks;
 
 pub use credits::CreditWindow;
