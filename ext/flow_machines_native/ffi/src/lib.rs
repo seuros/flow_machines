@@ -6,10 +6,11 @@ mod watermarks;
 
 use flow_machines::Refusal;
 
-/// One symbol per core variant, the snake case of its name.
-pub(crate) const fn refusal(refusal: Refusal) -> &'static str {
-    match refusal {
-        Refusal::Insufficient { .. } => "insufficient",
-        Refusal::ExceedsInFlight { .. } => "exceeds_in_flight",
+matryona_machines::symbols! {
+    /// One symbol per core variant, the snake case of its name; the counts
+    /// a variant carries stay in Rust.
+    pub(crate) Refusals for Refusal as "a refusal" => names_only {
+        Insufficient { .. } => "insufficient",
+        ExceedsInFlight { .. } => "exceeds_in_flight",
     }
 }

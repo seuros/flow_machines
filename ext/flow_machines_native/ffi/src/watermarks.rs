@@ -5,7 +5,24 @@ use std::cell::RefCell;
 use flow_machines::{FlowState, Signal, Watermarks};
 use magnus::typed_data::Obj;
 use magnus::{Error, RModule, Ruby, Symbol, Value, function, method, prelude::*};
-use matryona_machines::ruby::{integer, positive, symbol};
+use matryona_machines::ruby::{Symbols, integer, positive};
+
+matryona_machines::symbols! {
+    /// What an observation tells the producer.
+    Signals for Signal as "a signal" {
+        Pause => "pause",
+        Resume => "resume",
+        Unchanged => "unchanged",
+    }
+}
+
+matryona_machines::symbols! {
+    /// Whether the producer runs.
+    States for FlowState as "a state" {
+        Running => "running",
+        Paused => "paused",
+    }
+}
 
 #[magnus::wrap(class = "FlowMachines::Watermarks", free_immediately, size)]
 struct Wrapper(RefCell<Watermarks>);
@@ -23,25 +40,12 @@ impl Wrapper {
         let occupancy = integer(occupancy, "occupancy")?;
         let signal = rb_self.0.borrow_mut().observe(occupancy);
         // Finish the mutable borrow before allocating a Ruby value.
-        Ok(symbol(
-            ruby,
-            match signal {
-                Signal::Pause => "pause",
-                Signal::Resume => "resume",
-                Signal::Unchanged => "unchanged",
-            },
-        ))
+        Ok(Signals::symbol(ruby, signal))
     }
 
     fn state(ruby: &Ruby, rb_self: &Self) -> Symbol {
         let state = rb_self.0.borrow().state();
-        symbol(
-            ruby,
-            match state {
-                FlowState::Running => "running",
-                FlowState::Paused => "paused",
-            },
-        )
+        States::symbol(ruby, state)
     }
 }
 

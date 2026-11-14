@@ -6,9 +6,9 @@ use std::num::NonZeroU32;
 use flow_machines::{CreditWindow, Refusal};
 use magnus::typed_data::Obj;
 use magnus::{Error, RModule, Ruby, Symbol, Value, function, method, prelude::*};
-use matryona_machines::ruby::{positive, symbol};
+use matryona_machines::ruby::{SymbolNames, positive, symbol};
 
-use crate::refusal;
+use crate::Refusals;
 
 #[magnus::wrap(class = "FlowMachines::CreditWindow", free_immediately, size)]
 struct Wrapper(RefCell<CreditWindow>);
@@ -38,7 +38,10 @@ impl Wrapper {
         rb_self.check_frozen()?;
         let units = positive(units, "units")?;
         let outcome = operation(&mut rb_self.0.borrow_mut(), units);
-        Ok(symbol(ruby, outcome.map_or_else(refusal, |()| honoured)))
+        Ok(symbol(
+            ruby,
+            outcome.map_or_else(|refused| Refusals::name(&refused), |()| honoured),
+        ))
     }
 
     fn capacity(&self) -> u32 {
