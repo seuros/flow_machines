@@ -1,5 +1,6 @@
 use super::*;
-use crate::test_support::{Rng, nonzero};
+use crate::test_support::{below, nonzero};
+use matryona_machines::testing::{XorShift64, refuses};
 
 /// One call in a scripted trace, and the answer the window must give.
 #[derive(Clone, Copy)]
@@ -8,18 +9,24 @@ enum Step {
     Release(u32, Result<(), Refusal>),
 }
 
+/// A window call taking a count of units.
+type Call = fn(&mut CreditWindow, NonZeroU32) -> Result<(), Refusal>;
+
 /// Run `steps` against a fresh window; every refusal must leave it as it was.
 fn replay(capacity: u32, steps: &[Step]) -> CreditWindow {
     let mut window = CreditWindow::new(nonzero(capacity));
     for (index, &step) in steps.iter().enumerate() {
-        let before = window.clone();
-        let (outcome, expected) = match step {
-            Step::Acquire(units, expected) => (window.try_acquire(nonzero(units)), expected),
-            Step::Release(units, expected) => (window.release(nonzero(units)), expected),
+        let (units, expected, call): (_, _, Call) = match step {
+            Step::Acquire(units, expected) => (units, expected, CreditWindow::try_acquire),
+            Step::Release(units, expected) => (units, expected, CreditWindow::release),
         };
-        assert_eq!(outcome, expected, "step {index} of capacity {capacity}");
-        if outcome.is_err() {
-            assert_eq!(window, before, "refused step {index} changed the window");
+        match expected {
+            Err(refusal) => refuses(&mut window, refusal, |w| call(w, nonzero(units))),
+            Ok(()) => assert_eq!(
+                call(&mut window, nonzero(units)),
+                Ok(()),
+                "step {index} of capacity {capacity}"
+            ),
         }
     }
     window
@@ -97,14 +104,13 @@ fn refusals_describe_themselves() {
 #[test]
 fn randomized_trace_matches_a_balance_model() {
     const CAPACITY: u32 = 17;
-    let mut rng = Rng(0x4209_4209_4209_4209);
+    let mut rng = XorShift64::new(0x4209_4209_4209_4209);
     let mut window = CreditWindow::new(nonzero(CAPACITY));
     let mut outstanding = 0;
     let (mut honoured, mut refusals) = (0, 0);
     for _ in 0..20_000 {
-        let amount = 1 + rng.below(23);
-        let before = window.clone();
-        let (outcome, expected) = if rng.below(2) == 0 {
+        let amount = 1 + below(&mut rng, 23);
+        let (call, expected): (Call, _) = if below(&mut rng, 2) == 0 {
             let available = CAPACITY - outstanding;
             let expected = if amount <= available {
                 outstanding += amount;
@@ -112,7 +118,7 @@ fn randomized_trace_matches_a_balance_model() {
             } else {
                 Err(Refusal::Insufficient { available })
             };
-            (window.try_acquire(nonzero(amount)), expected)
+            (CreditWindow::try_acquire, expected)
         } else {
             let expected = if amount <= outstanding {
                 outstanding -= amount;
@@ -122,13 +128,13 @@ fn randomized_trace_matches_a_balance_model() {
                     in_flight: outstanding,
                 })
             };
-            (window.release(nonzero(amount)), expected)
+            (CreditWindow::release, expected)
         };
-        assert_eq!(outcome, expected);
-        if outcome.is_err() {
-            assert_eq!(window, before);
+        if let Err(refusal) = expected {
+            refuses(&mut window, refusal, |w| call(w, nonzero(amount)));
             refusals += 1;
         } else {
+            assert_eq!(call(&mut window, nonzero(amount)), Ok(()));
             honoured += 1;
         }
         assert_eq!(window.in_flight(), outstanding);

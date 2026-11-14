@@ -6,15 +6,16 @@ use std::num::NonZeroU32;
 use flow_machines::{CreditWindow, Refusal};
 use magnus::typed_data::Obj;
 use magnus::{Error, RModule, Ruby, Symbol, Value, function, method, prelude::*};
+use matryona_machines::ruby::{positive, symbol};
 
-use crate::{positive, refusal};
+use crate::refusal;
 
 #[magnus::wrap(class = "FlowMachines::CreditWindow", free_immediately, size)]
 struct Wrapper(RefCell<CreditWindow>);
 
 impl Wrapper {
-    fn new(ruby: &Ruby, capacity: Value) -> Result<Self, Error> {
-        let capacity = positive(ruby, capacity, "capacity")?;
+    fn new(capacity: Value) -> Result<Self, Error> {
+        let capacity = positive(capacity, "capacity")?;
         Ok(Self(RefCell::new(CreditWindow::new(capacity))))
     }
 
@@ -35,9 +36,9 @@ impl Wrapper {
         honoured: &'static str,
     ) -> Result<Symbol, Error> {
         rb_self.check_frozen()?;
-        let units = positive(ruby, units, "units")?;
+        let units = positive(units, "units")?;
         let outcome = operation(&mut rb_self.0.borrow_mut(), units);
-        Ok(ruby.to_symbol(outcome.map_or_else(refusal, |()| honoured)))
+        Ok(symbol(ruby, outcome.map_or_else(refusal, |()| honoured)))
     }
 
     fn capacity(&self) -> u32 {

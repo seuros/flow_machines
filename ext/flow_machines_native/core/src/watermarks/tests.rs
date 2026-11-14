@@ -1,5 +1,6 @@
 use super::*;
-use crate::test_support::{Rng, nonzero};
+use crate::test_support::{below, nonzero};
+use matryona_machines::testing::{XorShift64, unchanged};
 
 fn control(low: u32, high: u32) -> Watermarks {
     let Some(control) = Watermarks::new(low, nonzero(high)) else {
@@ -60,12 +61,11 @@ fn crossing_thresholds_emits_edges_only() {
 
 #[test]
 fn randomized_trace_matches_a_reference_state_machine() {
-    let mut rng = Rng(0x4210_4210_4210_4210);
+    let mut rng = XorShift64::new(0x4210_4210_4210_4210);
     let mut control = control(2, 7);
     let mut paused = false;
     for _ in 0..20_000 {
-        let occupancy = rng.below(11);
-        let before = control.clone();
+        let occupancy = below(&mut rng, 11);
         let next_paused = if paused {
             occupancy > 2
         } else {
@@ -76,9 +76,10 @@ fn randomized_trace_matches_a_reference_state_machine() {
             (true, false) => Signal::Resume,
             (false, false) | (true, true) => Signal::Unchanged,
         };
-        assert_eq!(control.observe(occupancy), expected);
         if expected == Signal::Unchanged {
-            assert_eq!(control, before);
+            assert_eq!(unchanged(&mut control, |c| c.observe(occupancy)), expected);
+        } else {
+            assert_eq!(control.observe(occupancy), expected);
         }
         paused = next_paused;
         let state = if paused {

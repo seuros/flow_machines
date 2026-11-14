@@ -216,7 +216,7 @@ No answer records a clock: neither object takes one, so every answer depends onl
 
 - **Counts are Integers** in `0..4_294_967_295`. Capacity, acquire and release units, and `high` must be at least 1. Floats and strings raise `TypeError`; zero where 1 is the minimum, negatives and anything past the range raise `RangeError`.
 - **Thresholds obey `0 <= low < high`.** Equal thresholds or a reversed pair raise `RangeError`. A `low` of zero is fine: resume only when fully drained.
-- **Positional, like the core.** `CreditWindow.new(capacity)` and `Watermarks.new(low, high)`, in that order. There are no keywords and no defaults. Pass a Hash where a count belongs and the `TypeError` names the argument: `capacity must be an Integer, not Hash`.
+- **Positional, like the core.** `CreditWindow.new(capacity)` and `Watermarks.new(low, high)`, in that order. There are no keywords and no defaults. Pass a Hash where a count belongs and the `TypeError` names the argument: `capacity must be an Integer`.
 - **Exceptions are two.** Wrong type is `TypeError`, a value the core does not accept is `RangeError`, and both messages name the argument. `ArgumentError` only ever comes from Ruby itself, for arity.
 - **Conversions come first.** Every argument is checked before the core is called, and after it the binding only turns the core's answer into a symbol, so a raise never costs a credit.
 - **A refusal is a symbol, and nothing changed.** `:insufficient` and `:exceeds_in_flight` leave `in_flight` and `available` exactly as they were. Nothing is granted or returned in part.

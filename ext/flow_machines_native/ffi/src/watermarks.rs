@@ -5,38 +5,43 @@ use std::cell::RefCell;
 use flow_machines::{FlowState, Signal, Watermarks};
 use magnus::typed_data::Obj;
 use magnus::{Error, RModule, Ruby, Symbol, Value, function, method, prelude::*};
-
-use crate::{count, positive};
+use matryona_machines::ruby::{integer, positive, symbol};
 
 #[magnus::wrap(class = "FlowMachines::Watermarks", free_immediately, size)]
 struct Wrapper(RefCell<Watermarks>);
 
 impl Wrapper {
     fn new(ruby: &Ruby, low: Value, high: Value) -> Result<Self, Error> {
-        let low = count(ruby, low, "low")?;
-        let control = Watermarks::new(low, positive(ruby, high, "high")?)
+        let low = integer(low, "low")?;
+        let control = Watermarks::new(low, positive(high, "high")?)
             .ok_or_else(|| Error::new(ruby.exception_range_error(), "low must be below high"))?;
         Ok(Self(RefCell::new(control)))
     }
 
     fn observe(ruby: &Ruby, rb_self: Obj<Self>, occupancy: Value) -> Result<Symbol, Error> {
         rb_self.check_frozen()?;
-        let occupancy = count(ruby, occupancy, "occupancy")?;
+        let occupancy = integer(occupancy, "occupancy")?;
         let signal = rb_self.0.borrow_mut().observe(occupancy);
         // Finish the mutable borrow before allocating a Ruby value.
-        Ok(ruby.to_symbol(match signal {
-            Signal::Pause => "pause",
-            Signal::Resume => "resume",
-            Signal::Unchanged => "unchanged",
-        }))
+        Ok(symbol(
+            ruby,
+            match signal {
+                Signal::Pause => "pause",
+                Signal::Resume => "resume",
+                Signal::Unchanged => "unchanged",
+            },
+        ))
     }
 
     fn state(ruby: &Ruby, rb_self: &Self) -> Symbol {
         let state = rb_self.0.borrow().state();
-        ruby.to_symbol(match state {
-            FlowState::Running => "running",
-            FlowState::Paused => "paused",
-        })
+        symbol(
+            ruby,
+            match state {
+                FlowState::Running => "running",
+                FlowState::Paused => "paused",
+            },
+        )
     }
 }
 

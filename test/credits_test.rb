@@ -67,11 +67,11 @@ module FlowMachines
       assert_raises(ArgumentError) { CreditWindow.new }
       assert_raises(ArgumentError) { CreditWindow.new(3, 4) }
       error = assert_raises(TypeError) { CreditWindow.new(capacity: 3) }
-      assert_equal 'capacity must be an Integer, not Hash', error.message
+      assert_equal 'capacity must be an Integer', error.message
       error = assert_raises(TypeError) { CreditWindow.new(3).try_acquire(nil) }
-      assert_equal 'units must be an Integer, not NilClass', error.message
+      assert_equal 'units must be an Integer', error.message
       error = assert_raises(RangeError) { CreditWindow.new(0) }
-      assert_equal 'capacity must be positive', error.message
+      assert_equal 'capacity must be in 1..=4294967295', error.message
     end
 
     def test_only_the_core_operations_are_exposed
@@ -86,6 +86,8 @@ module FlowMachines
 
       assert_raises(FrozenError) { window.try_acquire(1) }
       assert_raises(FrozenError) { window.release(1) }
+      assert_raises(FrozenError) { window.try_acquire(nil) }
+      assert_raises(FrozenError) { window.release(0) }
       assert_equal 1, window.in_flight
     end
 

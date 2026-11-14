@@ -35,9 +35,9 @@ module FlowMachines
       assert_raises(ArgumentError) { Watermarks.new(low: 1, high: 2) }
       assert_raises(TypeError) { Watermarks.new(1.0, 2) }
       error = assert_raises(TypeError) { Watermarks.new(0, nil) }
-      assert_equal 'high must be an Integer, not NilClass', error.message
+      assert_equal 'high must be an Integer', error.message
       error = assert_raises(TypeError) { Watermarks.new({ low: 1 }, 2) }
-      assert_equal 'low must be an Integer, not Hash', error.message
+      assert_equal 'low must be an Integer', error.message
       error = assert_raises(RangeError) { Watermarks.new(-1, 2) }
       assert_equal 'low must be in 0..=4294967295', error.message
     end
@@ -63,6 +63,8 @@ module FlowMachines
       control = Watermarks.new(1, 3).freeze
 
       assert_raises(FrozenError) { control.observe(3) }
+      assert_raises(FrozenError) { control.observe(:full) }
+      assert_raises(FrozenError) { control.observe(-1) }
       assert_equal :running, control.state
     end
 
