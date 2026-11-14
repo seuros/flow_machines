@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/seuros/flow_machines/compare/flow_machines/v0.3.0...flow_machines/v0.3.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** require matryona-machines &gt;= 0.3 with a names_only refusal table and symbols! tables ([3230754](https://github.com/seuros/flow_machines/commit/3230754ffbe7ee763b01d597e96d8feec0a68b9d))
+
 ## [0.3.0](https://github.com/seuros/flow_machines/compare/flow_machines/v0.2.1...flow_machines/v0.3.0) (2026-11-14)
 
 
