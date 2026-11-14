@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/seuros/flow_machines/compare/flow_machines/v0.3.1...flow_machines/v0.3.2) (2026-11-14)
+
+
+### Bug Fixes
+
+* **deps:** require matryona-machines &gt;= 0.4 ([40763b7](https://github.com/seuros/flow_machines/commit/40763b7164a56dcc37442e6820f870448924d7f4))
+
 ## [0.3.1](https://github.com/seuros/flow_machines/compare/flow_machines/v0.3.0...flow_machines/v0.3.1) (2026-11-14)
 
 
