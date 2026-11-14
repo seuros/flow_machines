@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/seuros/flow_machines/compare/flow-machines-v0.3.0...flow-machines-v0.3.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* name the offending argument in every raised message and undefine allocate on native classes ([ebf4d13](https://github.com/seuros/flow_machines/commit/ebf4d13bdb180fbc58112ea7a78fd82d18345fc8))
+
 ## [0.3.0](https://github.com/seuros/flow_machines/compare/flow-machines-v0.2.2...flow-machines-v0.3.0) (2026-11-13)
 
 
