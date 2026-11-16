@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/seuros/flow_machines/compare/flow_machines/v0.3.3...flow_machines/v0.3.4) (2026-11-16)
+
+
+### Bug Fixes
+
+* fix wrapped classes at load so building a value runs no Ruby ([978a8ce](https://github.com/seuros/flow_machines/commit/978a8cef9bcdc9925e94453cb5ff421b6f93b012))
+
 ## [0.3.3](https://github.com/seuros/flow_machines/compare/flow_machines/v0.3.2...flow_machines/v0.3.3) (2026-11-16)
 
 
