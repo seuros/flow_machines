@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/seuros/flow_machines/compare/flow-machines-v0.4.0...flow-machines-v0.4.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* build against matryona-machines 0.5 ([1cc6fee](https://github.com/seuros/flow_machines/commit/1cc6fee61c7e4d08626af5f4fd3319b133292d47))
+
 ## [0.4.0](https://github.com/seuros/flow_machines/compare/flow-machines-v0.3.1...flow-machines-v0.4.0) (2026-11-14)
 
 
