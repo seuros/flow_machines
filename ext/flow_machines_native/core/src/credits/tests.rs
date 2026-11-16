@@ -1,6 +1,6 @@
 use super::*;
 use crate::test_support::{below, nonzero};
-use matryona_machines::testing::{XorShift64, refuses};
+use matryona_machines::testing::{XorShift64, describes, refuses};
 
 /// One call in a scripted trace, and the answer the window must give.
 #[derive(Clone, Copy)]
@@ -88,17 +88,16 @@ fn scripted_traces_are_all_or_nothing() {
 
 #[test]
 fn refusals_describe_themselves() {
-    extern crate std;
-    use std::string::ToString;
-
-    assert_eq!(
-        Refusal::Insufficient { available: 2 }.to_string(),
-        "more units asked for than the 2 available"
-    );
-    assert_eq!(
-        Refusal::ExceedsInFlight { in_flight: 3 }.to_string(),
-        "more units returned than the 3 in flight"
-    );
+    describes(&[
+        (
+            Refusal::Insufficient { available: 2 },
+            "more units asked for than the 2 available",
+        ),
+        (
+            Refusal::ExceedsInFlight { in_flight: 3 },
+            "more units returned than the 3 in flight",
+        ),
+    ]);
 }
 
 #[test]

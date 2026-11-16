@@ -73,6 +73,7 @@ impl CreditWindow {
     /// Units still available for acquisition.
     #[must_use]
     pub const fn available(&self) -> u32 {
+        // in_flight <= capacity: `try_acquire` grants at most `available()`.
         self.capacity.get() - self.in_flight
     }
 }
