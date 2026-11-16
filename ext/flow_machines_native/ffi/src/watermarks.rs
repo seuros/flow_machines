@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use flow_machines::{FlowState, Signal, Watermarks};
 use magnus::typed_data::Obj;
 use magnus::{Error, RModule, Ruby, Symbol, Value, function, method, prelude::*};
-use matryona_machines::ruby::{Symbols, integer, positive};
+use matryona_machines::ruby::{Class, Symbols, integer, positive};
 
 matryona_machines::symbols! {
     /// What an observation tells the producer.
@@ -55,5 +55,8 @@ pub fn define(ruby: &Ruby, module: RModule) -> Result<(), Error> {
     class.undef_default_alloc_func();
     class.define_singleton_method("new", function!(Wrapper::new, 2))?;
     class.define_method("observe", method!(Wrapper::observe, 1))?;
-    class.define_method("state", method!(Wrapper::state, 0))
+    class.define_method("state", method!(Wrapper::state, 0))?;
+    // `new` answers a Watermarks: its class is fixed now, so building one
+    // never runs `Object.const_get`.
+    Class::pin_wrapped::<Wrapper>(ruby, class).map(drop)
 }

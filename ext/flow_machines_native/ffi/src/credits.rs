@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use flow_machines::{CreditWindow, Refusal};
 use magnus::typed_data::Obj;
 use magnus::{Error, RModule, Ruby, Symbol, Value, function, method, prelude::*};
-use matryona_machines::ruby::{SymbolNames, positive, symbol};
+use matryona_machines::ruby::{Class, SymbolNames, positive, symbol};
 
 use crate::Refusals;
 
@@ -66,5 +66,8 @@ pub fn define(ruby: &Ruby, module: RModule) -> Result<(), Error> {
     class.define_method("release", method!(Wrapper::release, 1))?;
     class.define_method("capacity", method!(Wrapper::capacity, 0))?;
     class.define_method("in_flight", method!(Wrapper::in_flight, 0))?;
-    class.define_method("available", method!(Wrapper::available, 0))
+    class.define_method("available", method!(Wrapper::available, 0))?;
+    // `new` answers a CreditWindow: its class is fixed now, so building one
+    // never runs `Object.const_get`.
+    Class::pin_wrapped::<Wrapper>(ruby, class).map(drop)
 }
